@@ -1,0 +1,708 @@
+#include <iostream>
+#include <string>
+#include <list>
+#include <fstream>
+#include <sstream>
+#include "SymbolTable.h"
+#include "Node.h"
+
+COMPILER ParserGrammar
+
+	IR::AST::ProgramNode* program;
+	#define LISTOFFORMALS std::list<IR::AST::FormalNode*>
+	#define LISTOFSTMTS std::list<IR::AST::StmtNode*>
+	#define LISTOFEXPR std::list<IR::AST::ExprNode*>
+
+CHARACTERS
+	digit = "0123456789".
+	letter = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".
+	cr = "\r".
+	lf = "\n".
+	tab = "\t".
+	space = " ".
+	quote = '"'.
+	percent = '%'.
+	notQuote = ANY - quote - "\r\n".
+	miscsymbol = "!.,/[]{};:<>?@#$%^&*()_-+=~`".
+	octaldigit = digit - "89".
+	lowerhexdigit = digit + "abcdef".
+	upperhexdigit = digit + "ABCDEF".
+	nonzerodigit = digit - "0".
+	
+TOKENS
+	id = letter{letter | digit}.
+	char = "'" (digit | letter | ("\\" ('r' | 'n' | 't' | '"' | "'" | 'v' | 'b' | 'f' | 'a' | '?' | ('x' lowerhexdigit [lowerhexdigit]) | (octaldigit [octaldigit [octaldigit]]))) | space | quote | percent | miscsymbol) "'".
+	integer = (["-" | "+"] nonzerodigit {digit}) | "0".
+	octalinteger = "0" octaldigit {octaldigit}.
+	lowerhexinteger = "0" "x" lowerhexdigit {lowerhexdigit}.
+	upperhexinteger = "0" "X" upperhexdigit {upperhexdigit}.
+	float = ["-"] digit {digit} "." digit {digit}.
+	string = '"' {notQuote} '"'.
+	reg = '$'{letter | digit}.
+	"if"
+	"else"
+	"while"
+	"switch"
+	"return"
+	"true"
+	"false"
+	"asm"
+	"void"
+	"char"
+	"short"
+	"int"
+	"long"
+	"bool"
+	"sizeof"
+	"struct"
+	"+"
+	"-"
+	"*"
+	"/"
+	"%"
+	"<"
+	"<="
+	">="
+	">"
+	"=="
+	"!="
+	"&&"
+	"||"
+	"!"
+	";"
+	":"
+	"..."
+	"."
+	","
+	"="
+	"+="
+	"-="
+	"*="
+	"/="
+	"%="
+	"<<="
+	">>="
+	"&="
+	"^="
+	"|="
+	"("
+	")"
+	"{"
+	"}"
+	"["
+	"]"
+	"&"
+	"|"
+	"^"
+	"<<"
+	">>"
+	"$"
+	"->"
+	"++"
+	"--"
+	
+COMMENTS FROM "/*" TO "*/" NESTED
+COMMENTS FROM "//" TO cr lf
+
+IGNORE cr + lf + tab
+
+PRODUCTIONS
+
+ParserGrammar  = 
+	(
+		(. 
+			std::list<IR::AST::TranslationUnitNode*>* units = new std::list<IR::AST::TranslationUnitNode*>();
+			IR::AST::TranslationUnitNode* tmp_unit; 
+		.)
+		{TranslationUnit<tmp_unit> (. units->push_back(tmp_unit); .)}
+		(. 
+			this->program = new IR::AST::ProgramNode(*units);
+		.)
+	).
+	
+TranslationUnit<IR::AST::TranslationUnitNode*& result> = 
+	(.
+		IR::AST::TypeNode* returnType = NULL;
+		std::wstring* name = new std::wstring();
+		int numPointer = 0;
+		int* pNumPointer = &numPointer;
+		std::list<IR::AST::FormalNode*>* params = new std::list<IR::AST::FormalNode*>();
+		bool isVariableLength = false;
+		bool* pIsVariableLength = &isVariableLength;
+	.)
+	( 
+		StructSpecifiers<returnType> StructTranslationUnit<returnType, result>
+		| PrimitiveSpecifiers<returnType> Pointer<pNumPointer> id (. name = new std::wstring(t->val); returnType->SetNumPointers(numPointer); .) TranslationUnitPrime<returnType, name, result>
+		| "interrupt" PrimitiveSpecifiers<returnType> Pointer<pNumPointer> id (. name = new std::wstring(t->val); returnType->SetNumPointers(numPointer); .) '(' ParameterList<params, pIsVariableLength> ')' FuncSignature<returnType, name, params, true, pIsVariableLength, result>
+	).
+
+StructTranslationUnit<IR::AST::TypeNode* type, IR::AST::TranslationUnitNode*& result> =
+	(.
+		IR::AST::ExprNode* arrayindex = NULL;
+		std::wstring* tmp_name = new std::wstring();
+		std::wstring init_name = std::wstring();
+		int numPointer = 0;
+		int* pNumPointer = &numPointer;
+		std::list<std::wstring> names = std::list<std::wstring>();
+		std::list<IR::AST::TypeNode*> types = std::list<IR::AST::TypeNode*>();
+		std::wstring* name = new std::wstring();
+	.)
+	(
+		(. name = new std::wstring(type->GetName()); .)
+		'{' 
+			{PrimitiveSpecifiers<type> Declarator<tmp_name, pNumPointer, arrayindex> ';'
+			(. 
+				type->SetNumPointers(numPointer);
+				type->SetArrayDim(arrayindex); 
+				names.push_back(*tmp_name);
+				types.push_back(type);
+			.)}
+		'}' [id (. init_name = std::wstring(t->val); .)] ';' (. result = new IR::AST::StructDeclNode(*name, init_name, types, names); .)
+		| id (. name = new std::wstring(t->val); .) StructTranslationUnitPrime<type, name, result>
+	).
+
+StructTranslationUnitPrime<IR::AST::TypeNode* type, std::wstring* name, IR::AST::TranslationUnitNode*& result> =
+	(.
+		std::list<IR::AST::FormalNode*>* params = new std::list<IR::AST::FormalNode*>();
+		std::list<IR::AST::StmtNode*>* body = new std::list<IR::AST::StmtNode*>();
+		IR::AST::ExprNode* expr;
+		bool isVariableLength = false;
+		bool* pIsVariableLength = &isVariableLength;
+	.)
+	(
+		'=' GlobalStructAssignment<type, name, result> ';'
+		| ';' (. result = new IR::AST::GlobalDeclAssignNode(type, *name, NULL); .)
+	).
+
+GlobalStructAssignment<IR::AST::TypeNode* type, std::wstring* name, IR::AST::TranslationUnitNode*& result> =
+	(.
+		IR::AST::ExprNode* tmp_expr;
+		IR::AST::ExprNode* expr;
+		std::list<IR::AST::ExprNode*> inits = std::list<IR::AST::ExprNode*>();
+	.)
+	(
+		'{' 
+			Expr<tmp_expr> (. inits.push_back(tmp_expr); .) 
+			{',' Expr<tmp_expr> (. inits.push_back(tmp_expr); .)} 
+		'}' (. result = new IR::AST::GlobalStructInitNode(type, *name, inits); .)
+		| Expr<expr> (. result = new IR::AST::GlobalDeclAssignNode(type, *name, expr); .)
+	).
+
+TranslationUnitPrime<IR::AST::TypeNode* type, std::wstring* name, IR::AST::TranslationUnitNode*& result> =
+	(.
+		std::list<IR::AST::FormalNode*>* params = new std::list<IR::AST::FormalNode*>();
+		std::list<IR::AST::StmtNode*>* body = new std::list<IR::AST::StmtNode*>();
+		IR::AST::ExprNode* expr;
+		bool isVariableLength = false;
+		bool* pIsVariableLength = &isVariableLength;
+	.)
+	(
+		'(' ParameterList<params, pIsVariableLength> ')' FuncSignature<type, name, params, false, pIsVariableLength, result>
+		| [ '[' Expr<expr> (. type->SetArrayDim(expr); type->SetNumPointers(type->GetNumPointers() + 1); .) ']' ] GlobalDeclAssign<type, name, result>
+	).
+	
+GlobalDeclAssign<IR::AST::TypeNode* type, std::wstring* name, IR::AST::TranslationUnitNode*& result> =
+	(.
+		IR::AST::ExprNode* expr;
+	.)
+	(	
+		'=' Expr<expr> ';' (. result = new IR::AST::GlobalDeclAssignNode(type, *name, expr); .)
+		| ';' (. result = new IR::AST::GlobalDeclAssignNode(type, *name, NULL); .)
+	).
+	
+FuncSignature<IR::AST::TypeNode*& returnType, std::wstring*& name, LISTOFFORMALS*& params, bool isInterruptHandler, bool*& isVariableLength, IR::AST::TranslationUnitNode*& result> =
+	(.
+		std::list<IR::AST::StmtNode*>* body = new std::list<IR::AST::StmtNode*>();
+	.)
+	(
+		FuncDef<body> (. result = new IR::AST::FuncNode(*name, returnType, *params, isInterruptHandler, *isVariableLength, *body); .)
+		| ';' (. result = new IR::AST::FuncDeclNode(*name, returnType, *params, *isVariableLength); .)
+	).
+	
+Specifiers<IR::AST::TypeNode*& result> =
+	(
+		(. 
+			bool tmp_val = false;
+			bool* struct_val = &tmp_val;
+			std::wstring* tmp_spec = new std::wstring();
+		.)
+		TypeSpecifier<tmp_spec, struct_val>
+		(. if (*struct_val) { result = new IR::AST::StructTypeNode(*tmp_spec);
+			} else {result = new IR::AST::PrimitiveTypeNode(*tmp_spec);} .)
+	).
+	
+PrimitiveSpecifiers<IR::AST::TypeNode*& result> =
+	(
+		(. 
+			std::wstring* tmp_spec = new std::wstring();
+			std::list<std::wstring*> storagespecs = std::list<std::wstring*>();
+		.)
+		PrimitiveTypeSpecifier<tmp_spec>
+		(. result = new IR::AST::PrimitiveTypeNode(*tmp_spec); .)
+	).
+	
+StructSpecifiers<IR::AST::TypeNode*& result> =
+	(
+		(. 
+			std::wstring* tmp_spec = new std::wstring();
+			std::list<std::wstring*> storagespecs = std::list<std::wstring*>();
+		.)
+		StructTypeSpecifier<tmp_spec>
+		(. result = new IR::AST::StructTypeNode(*tmp_spec); .)
+	).
+
+TypeSpecifier<std::wstring*& result, bool*& struct_val> =
+	(
+		PrimitiveTypeSpecifier<result> (. *struct_val = false; .)
+		| StructTypeSpecifier<result> (. *struct_val = true; .)
+	).
+
+StructTypeSpecifier<std::wstring*& result> =
+	(
+		"struct" id (. result = new std::wstring(t->val);.)
+	).
+
+PrimitiveTypeSpecifier<std::wstring*& result> =
+	(
+		"void" (. result = new std::wstring(L"void"); .)
+		| "char"  (. result = new std::wstring(L"char"); .)
+		| "short"  (. result = new std::wstring(L"short"); .)
+		| "int" (. result = new std::wstring(L"int"); .)
+		| "long"  (. result = new std::wstring(L"long"); .)
+		| "bool" (. result = new std::wstring(L"boolean"); .)
+	).
+
+InitDeclarator<std::wstring*& name, int*& numPointers, IR::AST::ExprNode*& arrayindex, IR::AST::ExprNode*& result>  =
+	(
+		Declarator<name, numPointers, arrayindex> InitDeclaratorPrime<result>
+	).
+	
+InitDeclaratorPrime<IR::AST::ExprNode*& result> =
+	(
+		'=' Expr<result>
+		| (. result = NULL; .)
+	).
+	
+Declarator<std::wstring*& name, int*& numPointers, IR::AST::ExprNode*& arrayindex> =
+	(
+		Pointer<numPointers> DirectDeclarator<name, arrayindex>
+		(. if (arrayindex)
+			{
+				(*numPointers)++;
+			}
+		.)
+	).
+	
+DirectDeclarator<std::wstring*& name, IR::AST::ExprNode*& arrayindex> =
+	(
+		id (. *name = std::wstring(t->val); .) DirectDeclaratorPrime<arrayindex>
+	).
+	
+DirectDeclaratorPrime<IR::AST::ExprNode*& arrayindex> =
+	(
+		'[' TernaryExpr<arrayindex> ']'
+		| (. arrayindex = NULL; .)
+	).
+	
+ParameterList<LISTOFFORMALS*& params, bool*& isVariableLength> =
+		(. IR::AST::FormalNode* tmp_formal = new IR::AST::FormalNode(); .)
+	(
+		[Formal<tmp_formal> (. params->push_back(tmp_formal); .) 
+			{',' ("..." (. *isVariableLength = true; return; .) | 
+				Formal<tmp_formal> (. params->push_back(tmp_formal); .) ) } ]
+	).
+
+Formal<IR::AST::FormalNode*& result> =
+	( 
+		(.
+			IR::AST::TypeNode* type;
+			IR::AST::ExprNode* arrayindex = NULL;
+			std::wstring* name = new std::wstring();
+			int numPointers = 0;
+			int* pnumPointers = &numPointers;
+		.)
+		Specifiers<type> Declarator<name, pnumPointers, arrayindex> 
+		(. 
+			type->SetNumPointers(numPointers);
+			type->SetArrayDim(arrayindex);
+			result = new IR::AST::FormalNode(*name, type); 
+		.)
+	).
+	
+Pointer<int*& numPointers> =
+	(. *numPointers = 0; .)
+	( 
+		{'*' (. (*numPointers)++; .)}
+	).
+	
+FuncDef<LISTOFSTMTS* result> =
+	(
+		(. 
+			IR::AST::StmtNode* tmp_stmt = NULL;
+		.)
+		'{' {Stmt<tmp_stmt> (. result->push_back(tmp_stmt); .)} '}'
+	).
+	
+Stmt<IR::AST::StmtNode*& result> = 
+	(. 
+		IR::AST::StmtNode* tmp_stmt = NULL; 
+		std::list<IR::AST::StmtNode*>* body = new std::list<IR::AST::StmtNode*>();
+		std::list<IR::AST::StmtNode*>* body2 = new std::list<IR::AST::StmtNode*>();
+		IR::AST::ExprNode* tmp_expr = NULL;
+		IR::AST::ExprNode* tmp_expr2 = NULL;
+		IR::AST::StmtNode* tmp_stmt2 = NULL;
+	.)
+	( 
+		Expr<tmp_expr> ';' (. result = new IR::AST::ExpressionStmt(tmp_expr); .)
+		| VarDecl<result>
+		| '{' {Stmt<tmp_stmt> (. body->push_back(tmp_stmt); .)} '}' (. result = new IR::AST::BlockNode(*body); .)
+		| "if" '(' Expr<tmp_expr> ')' Stmt<tmp_stmt> 
+			(. result = new IR::AST::IfNode(tmp_expr, tmp_stmt); .)
+			["else" Stmt<tmp_stmt2> (. result = new IR::AST::IfNode(tmp_expr, tmp_stmt, tmp_stmt2); .)]
+		| "while" '(' Expr<tmp_expr> ')' Stmt<tmp_stmt> (. result = new IR::AST::WhileNode(tmp_expr,tmp_stmt); .)
+		| "for" '(' Expr<tmp_expr> (. body->push_back(new IR::AST::ExpressionStmt(tmp_expr)); .) ';' Expr<tmp_expr> ';' Expr<tmp_expr2> ')' Stmt<tmp_stmt> (. body2->push_back(tmp_stmt); body2->push_back(new IR::AST::ExpressionStmt(tmp_expr2)); body->push_back(new IR::AST::WhileNode(tmp_expr, new IR::AST::BlockNode(*body2))); result = new IR::AST::BlockNode(*body); .)
+		| "return" Expr<tmp_expr> ';' (. result = new IR::AST::ReturnNode(tmp_expr); .)
+		| "continue" ";"
+		| "break" ";"
+		| SwitchStmt<result>
+	).
+	
+VarDecl<IR::AST::StmtNode*& result> =
+	(. 
+		IR::AST::TypeNode* type = NULL; 
+		IR::AST::ExprNode* tmp_expr = NULL;
+		IR::AST::ExprNode* arrayindex = NULL;
+		std::wstring* name = new std::wstring();
+		std::wstring* typeStr = new std::wstring();
+		int numPointers = 0;
+		int* pnumPointers = &numPointers;
+	.)
+	(
+		PrimitiveTypeSpecifier<typeStr> InitDeclarator<name, pnumPointers, arrayindex, tmp_expr> 
+			(. 
+				type = new IR::AST::PrimitiveTypeNode(*typeStr, numPointers, arrayindex);
+				result = new IR::AST::DeclAssignNode(type, *name, tmp_expr); 
+			.) ';'
+		| StructTypeSpecifier<typeStr> Declarator<name, pnumPointers, arrayindex> VarDeclPrime<typeStr, name, numPointers, arrayindex, result>
+	).
+
+VarDeclPrime<std::wstring* typeStr, std::wstring* name, int numPointers, IR::AST::ExprNode*& arrayindex, IR::AST::StmtNode*& result> =
+	(.
+		IR::AST::TypeNode* type = new IR::AST::StructTypeNode(*typeStr, numPointers, arrayindex);
+	.)
+	(
+		'=' VarAssignment<type, name, result> ';'
+		| ';' (. result = new IR::AST::StructInitNode(type, *name, std::list<IR::AST::ExprNode*>()); .)
+	).
+
+VarAssignment<IR::AST::TypeNode* type, std::wstring* name, IR::AST::StmtNode*& result> =
+	(.
+		IR::AST::ExprNode* tmp_expr;
+		IR::AST::ExprNode* expr;
+		std::list<IR::AST::ExprNode*> inits = std::list<IR::AST::ExprNode*>();
+	.)
+	(
+		'{' 
+			Expr<tmp_expr> (. inits.push_back(tmp_expr); .) 
+			{',' Expr<tmp_expr> (. inits.push_back(tmp_expr); .)} 
+		'}' (. result = new IR::AST::StructInitNode(type, *name, inits); .)
+		| Expr<expr> (. result = new IR::AST::DeclAssignNode(type, *name, expr); .)
+	).
+
+SwitchStmt<IR::AST::StmtNode*& result> =
+	(.
+		IR::AST::ExprNode* testcase = NULL;
+		std::list<IR::AST::ExprNode*> cases = std::list<IR::AST::ExprNode*>();
+		std::list<IR::AST::StmtNode*> bodies = std::list<IR::AST::StmtNode*>();
+		IR::AST::ExprNode* tmp_expr = NULL;
+		IR::AST::StmtNode* tmp_stmt = NULL;
+		IR::AST::StmtNode* defaultstmt = NULL;
+		std::list<IR::AST::StmtNode*> blockbody = std::list<IR::AST::StmtNode*>();
+	.)
+	(
+		"switch" "(" Expr<testcase> ")" "{" {"case" Expr<tmp_expr> ":" {Stmt<tmp_stmt> (. blockbody.push_back(tmp_stmt); .)} "break" ";" (. cases.push_back(tmp_expr); bodies.push_back(new IR::AST::BlockNode(blockbody)); blockbody.clear(); .)} ["default" ":" {Stmt<defaultstmt> (. blockbody.push_back(tmp_stmt); .)} "break" ";"] "}"
+		(. result = new IR::AST::SwitchNode(testcase, cases, bodies, defaultstmt); .)
+	).
+
+Expr<IR::AST::ExprNode*& result> =
+	(.
+		IR::AST::ExprNode* lhs = NULL;
+	.)
+	( 
+		TernaryExpr<lhs> ExprPrime<lhs, result>
+	).
+	
+ExprPrime<IR::AST::ExprNode* lhs, IR::AST::ExprNode*& result> =
+	(.
+		std::wstring* op = new std::wstring();
+		IR::AST::ExprNode* rhs = NULL;
+	.)
+	(
+		AssignmentOperator<op> Expr<rhs> (. result = new IR::AST::AssignNode(lhs, *op, rhs); .)
+		| (. result = lhs; .)
+	).
+	
+AssignmentOperator<std::wstring*& result> =
+	(
+		"=" (. result = new std::wstring(L"="); .)
+		| "+=" (. result = new std::wstring(L"+="); .)
+		| "-=" (. result = new std::wstring(L"-="); .)
+		| "<<=" (. result = new std::wstring(L"<<="); .)
+		| ">>=" (. result = new std::wstring(L">>="); .)
+		| "&=" (. result = new std::wstring(L"&="); .)
+		| "^=" (. result = new std::wstring(L"^="); .)
+		| "|=" (. result = new std::wstring(L"|="); .)
+	).
+	
+TernaryExpr<IR::AST::ExprNode*& result> =
+	(
+		(.
+			IR::AST::ExprNode* cond = NULL;
+		.)
+		AndOrExpr<cond> TernaryExprPrime<cond, result>
+	).
+	
+TernaryExprPrime<IR::AST::ExprNode* cond, IR::AST::ExprNode*& result> = 
+	(. 
+		IR::AST::ExprNode* thenexpr = NULL;
+		IR::AST::ExprNode* elseexpr = NULL;
+	.)
+	(
+		'?' AndOrExpr<thenexpr> ':' TernaryExpr<elseexpr>
+			(. result = new IR::AST::TernaryNode(cond, thenexpr, elseexpr); .)
+		| (. result = cond; .)
+	).
+
+AndOrExpr<IR::AST::ExprNode*& result> =
+	( 
+		(.
+			IR::AST::ExprNode* tmp_expr = NULL;
+		.)
+		BinaryAndOrExpr<tmp_expr> AndOrExprPrime<tmp_expr, result>
+	).
+	
+AndOrExprPrime<IR::AST::ExprNode* lhs, IR::AST::ExprNode*& result> =
+	(. 
+		std::wstring op = std::wstring(); 
+		IR::AST::ExprNode* rhs = NULL;
+	.)
+	(
+		( "&&" (. op = std::wstring(L"&&"); .)| "||"  (. op = std::wstring(L"||"); .)) AndOrExpr<rhs>
+			(. result = new IR::AST::BinaryNode(lhs, op, rhs); .)
+		| (. result = lhs; .)
+	).
+
+BinaryAndOrExpr<IR::AST::ExprNode*& result> =
+	(
+		(.
+			IR::AST::ExprNode* tmp_expr = NULL;
+		.)
+		EqualExpr<tmp_expr> BinaryAndOrExprPrime<tmp_expr, result>
+	).
+
+BinaryAndOrExprPrime<IR::AST::ExprNode* lhs, IR::AST::ExprNode*& result> =
+	(. 
+		std::wstring op = std::wstring(); 
+		IR::AST::ExprNode* rhs = NULL;
+	.)
+	(
+		( "&" (. op = std::wstring(L"&"); .) 
+			| "|" (. op = std::wstring(L"|"); .) 
+			| "^" (. op = std::wstring(L"^"); .)) 
+			BinaryAndOrExpr<rhs>
+			(. result = new IR::AST::BinaryNode(lhs, op, rhs); .)
+		| (. result = lhs; .)
+	).
+
+EqualExpr<IR::AST::ExprNode*& result> = 
+	( 
+		(.
+			IR::AST::ExprNode* tmp_expr = NULL;
+		.)
+		CompareExpr<tmp_expr> EqualExprPrime<tmp_expr, result>
+	).
+
+EqualExprPrime<IR::AST::ExprNode* lhs, IR::AST::ExprNode*& result> =
+	(. 
+		std::wstring op = std::wstring(); 
+		IR::AST::ExprNode* rhs = NULL;
+	.)
+	(
+		( "==" (. op = std::wstring(L"=="); .) 
+			| "!="  (. op = std::wstring(L"!="); .))
+			EqualExpr<rhs>
+			(. result = new IR::AST::BinaryNode(lhs, op, rhs); .)
+		| (. result = lhs; .)
+	).
+
+CompareExpr<IR::AST::ExprNode*& result> = 
+	(
+		(.
+			IR::AST::ExprNode* tmp_expr = NULL;
+		.)
+		ShiftExpr<tmp_expr> CompareExprPrime<tmp_expr, result>
+	).
+
+CompareExprPrime<IR::AST::ExprNode* lhs, IR::AST::ExprNode*& result>  =
+	(. 
+		std::wstring op = std::wstring(); 
+		IR::AST::ExprNode* rhs = NULL;
+	.)
+	(
+		( "<" (. op = std::wstring(L"<"); .) 
+			| "<="  (. op = std::wstring(L"<="); .)
+			| ">" (. op = std::wstring(L">"); .) 
+			| ">="  (. op = std::wstring(L">="); .))
+			CompareExpr<rhs>
+			(. result = new IR::AST::BinaryNode(lhs, op, rhs); .)
+		| (. result = lhs; .)
+	).
+
+ShiftExpr<IR::AST::ExprNode*& result> =
+	(
+		(.
+			IR::AST::ExprNode* tmp_expr = NULL;
+		.)
+		AddSubExpr<tmp_expr> ShiftExprPrime<tmp_expr, result>
+	).
+	
+ShiftExprPrime<IR::AST::ExprNode* lhs, IR::AST::ExprNode*& result> =
+	(. 
+		std::wstring op = std::wstring(); 
+		IR::AST::ExprNode* rhs = NULL;
+	.)
+	(
+		( ">>" (. op = std::wstring(L">>"); .) 
+			| "<<"  (. op = std::wstring(L"<<"); .))
+			ShiftExpr<rhs>
+			(. result = new IR::AST::BinaryNode(lhs, op, rhs); .)
+		| (. result = lhs; .)
+	).
+
+AddSubExpr<IR::AST::ExprNode*& result> =
+	(
+		(.
+			IR::AST::ExprNode* tmp_expr = NULL;
+		.)
+		CastExpr<tmp_expr> AddSubExprPrime<tmp_expr, result>
+	). 
+
+AddSubExprPrime<IR::AST::ExprNode* lhs, IR::AST::ExprNode*& result> =
+	(. 
+		std::wstring op = std::wstring(); 
+		IR::AST::ExprNode* rhs = NULL;
+	.)
+	(
+		( "+" (. op = std::wstring(L"+"); .) 
+			| "-"  (. op = std::wstring(L"-"); .)) 
+			AddSubExpr<rhs>
+			(. result = new IR::AST::BinaryNode(lhs, op, rhs); .)
+		| (. result = lhs; .)
+	).
+
+CastExpr<IR::AST::ExprNode*& result> =
+	(. 
+		IR::AST::ExprNode* tmp_expr = NULL;
+		std::wstring* type = new std::wstring();
+	.)
+	(
+		UnaryExpr<result>
+	).
+
+UnaryExpr<IR::AST::ExprNode*& result> = 
+	(. 
+		IR::AST::PrimitiveTypeNode* type = new IR::AST::PrimitiveTypeNode();
+		IR::AST::ExprNode* tmp_expr = NULL;
+		std::wstring* op = new std::wstring();
+		bool tmp_val = false;
+		bool* struct_val = &tmp_val;
+	.)
+	(
+		PostfixExpr<result>
+		| "++" UnaryExpr<tmp_expr>
+		| "--" UnaryExpr<tmp_expr>
+		| UnaryOperator<op> UnaryExpr<tmp_expr> (. result = new IR::AST::UnaryNode(*op, tmp_expr); .)
+		| "sizeof" "(" TypeSpecifier<op, struct_val> ")" (. result = new IR::AST::SizeOfNode(*op); .)
+	).
+
+UnaryOperator<std::wstring*& op> =
+	(
+		"-" (. op = new std::wstring(L"-"); .)
+		| "&" (. op = new std::wstring(L"&"); .)
+		| "*" (. op = new std::wstring(L"*"); .)
+		| "+" (. op = new std::wstring(L"+"); .)
+		| "~" (. op = new std::wstring(L"+"); .)
+		| "!" (. op = new std::wstring(L"!"); .)
+	).
+	
+PostfixExpr<IR::AST::ExprNode*& result> =
+	(
+	
+		"asm" AsmExpr<result>
+		| PrimaryExpr<result> {PostfixExprPrime<result>}
+	).
+	
+AsmExpr<IR::AST::ExprNode*& result> = 
+	(.  
+		std::wstring code = std::wstring(); 
+		std::list<std::wstring>* varkeys = new std::list<std::wstring>();
+		std::list<std::wstring>* varvals = new std::list<std::wstring>();
+		std::list<std::wstring>* outkeys = new std::list<std::wstring>();
+		std::list<std::wstring>* outvals = new std::list<std::wstring>(); 
+		std::wstring inputs = std::wstring();
+		std::wstring outputs = std::wstring();
+	.)
+	(
+		'(' string (. code = t->val; .) 
+			"," string (. inputs = t->val; .) 
+			"," string (. outputs = t->val; .) ')'
+		(. 
+			result = new IR::AST::AssemblyNode(code, inputs, outputs); 
+		.)
+	).
+	
+PostfixExprPrime<IR::AST::ExprNode*& result> =
+	(.
+		std::list<IR::AST::ExprNode*>* args = new std::list<IR::AST::ExprNode*>();
+		IR::AST::ExprNode* tmp_expr = NULL;
+	.)
+	(
+		'[' Expr<tmp_expr> ']' (. result = new IR::AST::ArrayNode(result, tmp_expr); .)
+		| '(' ArgList<args> ')' (. result = new IR::AST::FuncCallNode(result, *args); .)
+		| '.' id (. result = new IR::AST::StructReferenceNode(result, false, t->val); .)
+		| "->" id (. result = new IR::AST::StructReferenceNode(result, true, t->val); .)
+		| "++"
+		| "--"
+	).
+	
+PrimaryExpr<IR::AST::ExprNode*& result> =
+	(
+		id (. result = new IR::AST::VarNode(t->val); .)
+		| Constant<result>
+		| string (. result = new IR::AST::StringNode(new std::wstring(t->val)); .)
+		| '(' Expr<result> ')'
+	).
+
+Constant<IR::AST::ExprNode*& result> =
+	(
+		integer (. result = new IR::AST::IntNode(t->val); .)
+		| lowerhexinteger (. int intval; swscanf(t->val, L"%x", &intval); result = new IR::AST::IntNode(intval); .)
+		| upperhexinteger (. int intval; swscanf(t->val, L"%X", &intval); result = new IR::AST::IntNode(intval); .)
+		| octalinteger (. int intval; swscanf(t->val, L"%o", &intval); result = new IR::AST::IntNode(intval); .)
+		| char (. result = new IR::AST::CharNode(new std::wstring(t->val)); .)
+		| "null" (. result = new IR::AST::IntNode(L"0"); .)
+		| "NULL" (. result = new IR::AST::IntNode(L"0"); .)
+		| "true" (. result = new IR::AST::KeywordNode(t->val); .)
+		| "false" (. result = new IR::AST::KeywordNode(t->val); .)
+	).
+
+ArgList<LISTOFEXPR* result> =
+	(. 
+		IR::AST::ExprNode* tmp_expr = NULL;
+	.)
+	(
+		[Expr<tmp_expr> (. result->push_back(tmp_expr); .) 
+			{',' Expr<tmp_expr> (. result->push_back(tmp_expr); .)}]
+	).
+
+END ParserGrammar.

@@ -1,0 +1,563 @@
+//File Output (Implemented only as dummy functions)
+void* fopen(char* filename, char* mode)
+{
+return null;
+}
+void* freopen(char* filename, char* mode, void* stream)
+{
+return null;
+}
+int fflush(void* stream)
+{
+return -1;
+}
+int fclose(void* stream)
+{
+return -1;
+}
+int remove(char* filename)
+{
+return -1;
+}
+int rename(char* oldname, char* newname)
+{
+return -1;
+}
+void* tmpfile()
+{
+return null;
+}
+char* tmpname(char* s)
+{
+return null;
+}
+int setvbuf(void* stream, char* buf, int mode, int size)
+{
+return -1;
+}
+void setbuf(void* stream, char* buf)
+{}
+int fprintf(void* stream, char* format, ...)
+{
+return -1;
+}
+int vfprintf(void* stream, char* format, int* arg)
+{
+return -1;
+}
+int fscanf(void* stream, char* format, ...)
+{
+return -1;
+}
+int fgetc(void* stream)
+{
+return -1;
+}
+char* fgets(char* s, int n, void* stream)
+{
+return NULL;
+}
+int fputc(int c, void* stream)
+{
+return -1;
+}
+int fputs(char* s, void* stream)
+{
+return -1;
+}
+int ungetc(int c, void* stream)
+{
+return -1;
+}
+int putc(int c, void* stream)
+{
+return -1;
+}
+int fread(void* ptr, int size, int nobj, void* stream)
+{
+return nobj - 1;
+}
+int fwrite(void* ptr, int size, int nobj, void* stream)
+{
+return nobj - 1;
+}
+int fseek(void* stream, long offset, int origin)
+{
+return -1;
+}
+//Should return long, but no long currently in compiler.
+int ftell(void* stream)
+{
+return -1;
+}
+void rewind(void* stream)
+{}
+int fgetpos(void* stream, int* ptr)
+{
+return -1;
+}
+int fsetpos(void* stream, int* ptr)
+{
+return -1;
+}
+//Screen Output
+int currx = -6;
+int curry = 0;
+int currcolor = 7;
+int putchar(char c)
+{
+//TODO: Later, we will need to clear screen if we hit the bottom.
+//TODO: Figure out way to deal with colors.
+int intervalx = 6;
+if (currx > 255 - (intervalx << 1) || c == '\n')
+{
+// 8 pixels wide.
+currx = 0;
+curry += 10;
+}
+else
+{
+// 6 pixels wide.
+currx = currx + intervalx;
+}
+if (c != '\n')
+{
+while(asm("rp $v, 3", "", "") > 0)
+{
+}
+asm("ldi $k0, 512;add $k0, $s1;wp $rr, 3;ldi $k0, 1024;add $k0, $s0;wp $rr, 3", "currx:$s1,curry:$s0", "");
+asm("ldi $k0, 1536; add $k0, $s0; wp $rr, 3;ldi $k0, 2048;add $k0, $s1;wp $rr, 3", "currcolor:$s0,c:$s1", "");
+}
+return c;
+}
+char inBuffer[10];
+int bufferSize = 0;
+char getchar()
+{
+while(bufferSize == 0)
+{
+}
+char c = inBuffer[bufferSize - 1];
+bufferSize -= 1;
+return c;
+}
+int puts(char* s)
+{
+int i = 0;
+while(s[i] != '\0')
+{
+putchar(s[i]);
+i = i + 1;
+}
+putchar('\n');
+return 0;
+}
+int vprintf(char* format, int* ap)
+{
+int i = 0;
+int j = 0;
+while(format[j] != '\0')
+{
+if (format[j] == '%')
+{
+j = j + 1;
+if (format[j] == 'd')
+{
+//Use atoi here.
+}
+else if (format[j] == 's')
+{
+char* input = asm("lwn $v, $s0, $0;addi $s0, 2", "ap:$s0", "ap:$rr");
+int k = 0;
+while(input[k] != '\0')
+{
+putchar(input[k]);
+k = k + 1;
+}
+i = i + 1;
+}
+else if (format[j] == 'c')
+{
+char input = asm("lwn $v, $s0, $0;addi $s0, 2", "ap:$s0", "ap:$rr");
+putchar(input);
+i = i + 1;
+}
+else if (format[j] == '%')
+{
+putchar('%');
+i = i + 1;
+}
+else if (format[j] == 'p')
+{
+//Use atoi here (or something similar for hex)		
+}
+else if (format[j] == 'o')
+{
+//Use atoi here (or something similar for octal)
+}
+else if (format[j] == 'x')
+{
+//Use atoi here (or something similar for hex)
+}
+else if (format[j] == 'u')
+{
+//Use atoi here (or something similar for unsigned)
+}
+}
+else
+{
+putchar(format[j]);
+}
+j = j + 1;
+}
+return i;
+}
+int printf(char* format, ...)
+{
+int* ap;
+asm("ldi $s0, -5;lwn $s0, $fp, $s0;add $s0, $a", "", "ap:$rr");
+int num = vprintf(format, ap);
+return num;
+}
+int scanf(char* format, ...)
+{
+int* ap;
+asm("ldi $s0, -5;lwn $s0, $fp, $s0;add $s0, $a", "", "ap:$rr");
+int i = 0;
+int j = 0;
+while(format[j] != '\0')
+{
+if (format[j] == '%')
+{
+j = j + 1;
+if (format[j] == 'd')
+{
+//Use atoi here.
+}
+else if (format[j] == 's')
+{
+char* input = asm("lwn $v, $s0, $0;addi $s0, 2", "ap:$s0", "ap:$rr");
+int k = 0;
+char c = getchar();
+while (c == ' ' || c == '\n' || c == '\t' || c == '\r')
+{
+c = getchar();
+}
+while(c != ' ' && c != '\n' && c != '\t' && c != '\r')
+{
+input[k] = c;
+k = k + 1;
+}
+i = i + 1;
+}
+else if (format[j] == 'c')
+{
+char input = asm("lwn $v, $s0, $0;addi $s0, 2", "ap:$s0", "ap:$rr");
+char c = getchar();
+while (c == ' ' || c == '\n' || c == '\t' || c == '\r')
+{
+c = getchar();
+}
+input = c;
+i = i + 1;
+}
+else if (format[j] == '%')
+{
+char c = getchar();
+while (c == ' ' || c == '\n' || c == '\t' || c == '\r')
+{
+c = getchar();
+}
+if (c != '%')
+{
+return i;
+}
+}
+else if (format[j] == 'p')
+{
+//Use atoi here (or something similar for hex)		
+}
+else if (format[j] == 'o')
+{
+//Use atoi here (or something similar for octal)
+}
+else if (format[j] == 'x')
+{
+//Use atoi here (or something similar for hex)
+}
+else if (format[j] == 'u')
+{
+//Use atoi here (or something similar for unsigned)
+}
+}
+else if (format[j] != ' ' && format[j] != '\n' && format[j] != '\t' && format[j] != '\r')
+{
+char c = getchar();
+while (c == ' ' || c == '\n' || c == '\t' || c == '\r')
+{
+c = getchar();
+}
+if (c != format[j])
+{
+return i;
+}
+}
+j = j + 1;
+}
+return i;
+}
+//String I/O Functions
+int vsprintf(char* target, char* format, int* ap)
+{	
+int i = 0;
+int j = 0;
+int k = 0;
+while(format[j] != '\0')
+{
+if (format[j] == '%')
+{
+j = j + 1;
+if (format[j] == 'd')
+{
+//Use atoi here.
+}
+else if (format[j] == 's')
+{
+char* input = asm("lwn $v, $s0, $0;addi $s0, 2", "ap:$s0", "ap:$rr");
+int oldk = k;
+while(input[k - oldk] != '\0')
+{
+target[k] = input[k - oldk];
+k = k + 1;
+}
+i = i + 1;
+}
+else if (format[j] == 'c')
+{
+char input = asm("lwn $v, $s0, $0;addi $s0, 2", "ap:$s0", "ap:$rr");
+target[k] = input;
+k = k + 1;
+i = i + 1;
+}
+else if (format[j] == '%')
+{
+target[k] = '%';
+k = k + 1;
+i = i + 1;
+}
+else if (format[j] == 'p')
+{
+//Use atoi here (or something similar for hex)		
+}
+else if (format[j] == 'o')
+{
+//Use ati here (or something similar for octal)
+}
+else if (format[j] == 'x')
+{
+//Use atoi here (or something similar for hex)
+}
+else if (format[j] == 'u')
+{
+//Use atoi here (or something similar for unsigned)
+}
+}
+else
+{
+target[k] = format[j];
+k = k + 1;
+}
+j = j + 1;
+}
+return i;
+}
+int sprintf(char* target, char* format, ...)
+{
+int* ap;
+asm("ldi $s0, -5;lwn $s0, $fp, $s0;add $s0, $a", "", "ap:$rr");
+int num = vsprintf(target, format, ap);
+return num;
+}
+int sscanf(char* target, char* format, ...)
+{
+int* ap;
+asm("ldi $s0, -5;lwn $s0, $fp, $s0;add $s0, $a", "", "ap:$rr");
+int i = 0;
+int j = 0;
+int k = 0;
+while(format[j] != '\0')
+{
+if (format[j] == '%')
+{
+j = j + 1;
+if (format[j] == 'd')
+{
+//Use atoi here.
+}
+else if (format[j] == 's')
+{
+char* input = asm("lwn $v, $s0, $0;addi $s0, 2", "ap:$s0", "ap:$rr");
+int oldk = k;
+while (target[k] == ' ' || target[k] == '\n' || target[k] == '\t' || target[k] == '\r')
+{
+k = k + 1;
+}
+while(target[k] != ' ' && target[k] != '\n' && target[k] != '\t' && target[k] != '\r')
+{
+input[k-oldk] = target[k];
+k = k + 1;
+}
+input[k-oldk] = '\0';
+i = i + 1;
+}
+else if (format[j] == 'c')
+{
+char input = asm("lwn $v, $s0, $0;addi $s0, 2", "ap:$s0", "ap:$rr");
+while (target[k] == ' ' || target[k] == '\n' || target[k] == '\t' || target[k] == '\r')
+{
+k = k + 1;
+}
+input = target[k];
+i = i + 1;
+k = k + 1;
+}
+else if (format[j] == '%')
+{
+while (target[k] == ' ' || target[k] == '\n' || target[k] == '\t' || target[k] == '\r')
+{
+k = k + 1;
+}
+if (target[k] != '%')
+{
+return i;
+}
+k = k + 1;
+}
+else if (format[j] == 'p')
+{
+//Use atoi here (or something similar for hex)		
+}
+else if (format[j] == 'o')
+{
+//Use atoi here (or something similar for octal)
+}
+else if (format[j] == 'x')
+{
+//Use atoi here (or something similar for hex)
+}
+else if (format[j] == 'u')
+{
+//Use atoi here (or something similar for unsigned)
+}
+}
+else if (format[j] != ' ' && format[j] != '\n' && format[j] != '\t' && format[j] != '\r')
+{
+while (target[k] == ' ' || target[k] == '\n' || target[k] == '\t' || target[k] == '\r')
+{
+k = k + 1;
+}
+if (target[k] != format[j])
+{
+return i;
+}
+k = k + 1;
+}
+j = j + 1;
+}
+return i;
+}
+//Error Functions
+void clearerr(void* stream)
+{}
+int feof(void* stream)
+{
+return -1;
+}
+int ferror(void* stream)
+{
+return -1;
+}
+void perror(char* s)
+{ }
+int main(int argc)
+{
+char* str = "Hello World!";
+//putchar('A');
+putchar('\n');
+putchar('\n');
+//putchar('A');
+puts(str);
+int isPressed = 0;
+while(true)
+{
+int poses;
+int posx;
+int posy;
+int constant;
+asm("rp $s0, 6;ldl $s1, -1", "", "poses:$s0,constant:$s1");
+posx = poses & constant;
+posy = poses >> 16;
+if (posx < 0x100 && posy < 0x100)
+{
+//Do nothing, since no touch was detected.
+isPressed += 1;
+}
+else
+{
+if (isPressed > 500)
+{
+if (currcolor == 7)
+{
+currcolor = 1;
+puts(str);
+}
+else
+{
+currcolor += 1;
+puts(str);
+}
+isPressed = 0;
+}			
+}
+/*else if (isPressed > 500 && posx < 0x600 && posy < 0x300)
+{
+if (currcolor != 7)
+{
+currcolor = 7;
+puts(str);
+}
+isPressed = 0;
+}
+else if (isPressed > 500 && posx < 0x600 && posy > 0x300)
+{
+if (currcolor != 4)
+{
+currcolor = 4;
+puts(str);
+}
+isPressed = 0;
+}
+else if (isPressed > 500 && posx > 0x600 && posy < 0x300)
+{
+if (currcolor != 1)
+{
+currcolor = 1;
+puts(str);
+}
+isPressed = 0;
+}
+else if (isPressed > 500)
+{
+if (currcolor != 3)
+{
+currcolor = 3;
+puts(str);
+}
+isPressed = 0;
+}*/
+int j = asm("rp $v, 2", "", "");
+poses = (posy << 16) + posx;
+asm("wp $s0, 0", "poses:$s0", "");
+}
+return 0;
+}

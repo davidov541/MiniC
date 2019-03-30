@@ -1,0 +1,141 @@
+
+
+#if !defined(COCO_PARSER_H__)
+#define COCO_PARSER_H__
+
+#include <iostream>
+#include <string>
+#include <list>
+#include <fstream>
+#include <sstream>
+#include "SymbolTable.h"
+#include "Node.h"
+
+
+#include "Scanner.h"
+
+namespace MiniC {
+
+
+class Errors {
+public:
+	int count;			// number of errors detected
+
+	Errors();
+	void SynErr(int line, int col, int n);
+	void Error(int line, int col, const wchar_t *s);
+	void Warning(int line, int col, const wchar_t *s);
+	void Warning(const wchar_t *s);
+	void Exception(const wchar_t *s);
+
+}; // Errors
+
+class Parser {
+private:
+	enum {
+		_EOF=0,
+		_id=1,
+		_char=2,
+		_integer=3,
+		_octalinteger=4,
+		_lowerhexinteger=5,
+		_upperhexinteger=6,
+		_float=7,
+		_string=8,
+		_reg=9
+	};
+	int maxT;
+
+	Token *dummyToken;
+	int errDist;
+	int minErrDist;
+
+	void SynErr(int n);
+	void Get();
+	void Expect(int n);
+	bool StartOf(int s);
+	void ExpectWeak(int n, int follow);
+	bool WeakSeparator(int n, int syFol, int repFol);
+
+public:
+	Scanner *scanner;
+	Errors  *errors;
+
+	Token *t;			// last recognized token
+	Token *la;			// lookahead token
+
+IR::AST::ProgramNode* program;
+	#define LISTOFFORMALS std::list<IR::AST::FormalNode*>
+	#define LISTOFSTMTS std::list<IR::AST::StmtNode*>
+	#define LISTOFEXPR std::list<IR::AST::ExprNode*>
+
+
+
+	Parser(Scanner *scanner);
+	~Parser();
+	void SemErr(const wchar_t* msg);
+
+	void ParserGrammar();
+	void TranslationUnit(IR::AST::TranslationUnitNode*& result);
+	void StructSpecifiers(IR::AST::TypeNode*& result);
+	void StructTranslationUnit(IR::AST::TypeNode* type, IR::AST::TranslationUnitNode*& result);
+	void PrimitiveSpecifiers(IR::AST::TypeNode*& result);
+	void Pointer(int*& numPointers);
+	void TranslationUnitPrime(IR::AST::TypeNode* type, std::wstring* name, IR::AST::TranslationUnitNode*& result);
+	void ParameterList(LISTOFFORMALS*& params, bool*& isVariableLength);
+	void FuncSignature(IR::AST::TypeNode*& returnType, std::wstring*& name, LISTOFFORMALS*& params, bool isInterruptHandler, bool*& isVariableLength, IR::AST::TranslationUnitNode*& result);
+	void Declarator(std::wstring*& name, int*& numPointers, IR::AST::ExprNode*& arrayindex);
+	void StructTranslationUnitPrime(IR::AST::TypeNode* type, std::wstring* name, IR::AST::TranslationUnitNode*& result);
+	void GlobalStructAssignment(IR::AST::TypeNode* type, std::wstring* name, IR::AST::TranslationUnitNode*& result);
+	void Expr(IR::AST::ExprNode*& result);
+	void GlobalDeclAssign(IR::AST::TypeNode* type, std::wstring* name, IR::AST::TranslationUnitNode*& result);
+	void FuncDef(LISTOFSTMTS* result);
+	void Specifiers(IR::AST::TypeNode*& result);
+	void TypeSpecifier(std::wstring*& result, bool*& struct_val);
+	void PrimitiveTypeSpecifier(std::wstring*& result);
+	void StructTypeSpecifier(std::wstring*& result);
+	void InitDeclarator(std::wstring*& name, int*& numPointers, IR::AST::ExprNode*& arrayindex, IR::AST::ExprNode*& result);
+	void InitDeclaratorPrime(IR::AST::ExprNode*& result);
+	void DirectDeclarator(std::wstring*& name, IR::AST::ExprNode*& arrayindex);
+	void DirectDeclaratorPrime(IR::AST::ExprNode*& arrayindex);
+	void TernaryExpr(IR::AST::ExprNode*& result);
+	void Formal(IR::AST::FormalNode*& result);
+	void Stmt(IR::AST::StmtNode*& result);
+	void VarDecl(IR::AST::StmtNode*& result);
+	void SwitchStmt(IR::AST::StmtNode*& result);
+	void VarDeclPrime(std::wstring* typeStr, std::wstring* name, int numPointers, IR::AST::ExprNode*& arrayindex, IR::AST::StmtNode*& result);
+	void VarAssignment(IR::AST::TypeNode* type, std::wstring* name, IR::AST::StmtNode*& result);
+	void ExprPrime(IR::AST::ExprNode* lhs, IR::AST::ExprNode*& result);
+	void AssignmentOperator(std::wstring* result);
+	void AndOrExpr(IR::AST::ExprNode*& result);
+	void TernaryExprPrime(IR::AST::ExprNode* cond, IR::AST::ExprNode*& result);
+	void BinaryAndOrExpr(IR::AST::ExprNode*& result);
+	void AndOrExprPrime(IR::AST::ExprNode* lhs, IR::AST::ExprNode*& result);
+	void EqualExpr(IR::AST::ExprNode*& result);
+	void BinaryAndOrExprPrime(IR::AST::ExprNode* lhs, IR::AST::ExprNode*& result);
+	void CompareExpr(IR::AST::ExprNode*& result);
+	void EqualExprPrime(IR::AST::ExprNode* lhs, IR::AST::ExprNode*& result);
+	void ShiftExpr(IR::AST::ExprNode*& result);
+	void CompareExprPrime(IR::AST::ExprNode* lhs, IR::AST::ExprNode*& result);
+	void AddSubExpr(IR::AST::ExprNode*& result);
+	void ShiftExprPrime(IR::AST::ExprNode* lhs, IR::AST::ExprNode*& result);
+	void CastExpr(IR::AST::ExprNode*& result);
+	void AddSubExprPrime(IR::AST::ExprNode* lhs, IR::AST::ExprNode*& result);
+	void UnaryExpr(IR::AST::ExprNode*& result);
+	void PostfixExpr(IR::AST::ExprNode*& result);
+	void UnaryOperator(std::wstring*& op);
+	void AsmExpr(IR::AST::ExprNode*& result);
+	void PrimaryExpr(IR::AST::ExprNode*& result);
+	void PostfixExprPrime(IR::AST::ExprNode*& result);
+	void ArgList(LISTOFEXPR* result);
+	void Constant(IR::AST::ExprNode*& result);
+
+	void Parse();
+
+}; // end Parser
+
+} // namespace
+
+
+#endif // !defined(COCO_PARSER_H__)
+
